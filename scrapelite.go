@@ -21,16 +21,16 @@ type allowedDomainCallBack func(url string) bool
 type Scraper struct {
 	capturedHrefLinkFilter  allowedDomainCallBack
 	captureDomainFilter     allowedDomainCallBack
-	hrefLinks               chan string
+	HrefLinks               chan string
 	scrapeReady             chan struct{}
-	capturedDomainDocuments chan *goquery.Document
+	CapturedDomainDocuments chan *goquery.Document
 
 	httpClient HttpClient
 }
 
 func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
-	s := &Scraper{httpClient: c, hrefLinks: make(chan string), capturedDomainDocuments: make(chan *goquery.Document)}
+	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document)}
 	return s
 }
 
@@ -55,11 +55,11 @@ func (s *Scraper) Go(baseUrl string) {
 		log.Fatalln("Error parsing initial url: ", parsedBaseUrl)
 	}
 	go func() {
-		// Adding the initial urls into the hrefLinks chan so that
+		// Adding the initial urls into the HrefLinks chan so that
 		// we can start from somewhere. Else the chan would be empty,
 		// and we would be blocking forever in the receiving side
 		// which is the hot loop in this function.
-		s.hrefLinks <- baseUrl
+		s.HrefLinks <- baseUrl
 	}()
 	for i := 0; i < 15; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
@@ -75,11 +75,11 @@ func (s *Scraper) Wait() {
 // The user can provide a closure that is matched on the urls
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
-	for l := range s.hrefLinks {
+	for l := range s.HrefLinks {
 		// Here we are sending the link back to the channel
 		// because the link we're using to crawl is also going
 		// to be used by the HTML parser that will be receiving
-		// from the hrefLinks channel. AKA we don't want to
+		// from the HrefLinks channel. AKA we don't want to
 		// get rid of it forever. We send it from its own
 		// goroutine to avoid blocking the main goroutine
 		// thread in this comment scope.
@@ -87,7 +87,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			// Checking if no filter set first to not cause
 			// a nil reference
 			if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-				s.hrefLinks <- l
+				s.HrefLinks <- l
 			}
 		}()
 		fmt.Println("Visiting:", l)
@@ -106,9 +106,9 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		if s.captureDomainFilter == nil || s.captureDomainFilter(l) {
 			go func() {
 				select {
-				case s.capturedDomainDocuments <- d:
+				case s.CapturedDomainDocuments <- d:
 				case <-time.After(5 * time.Second):
-					log.Fatalln("Channel send to capturedDomainDocuments blocked for 5 seconds. Something is wrong with your code. Make sure you receive the documents.")
+					log.Fatalln("Channel send to CapturedDomainDocuments blocked for 5 seconds. Something is wrong with your code. Make sure you receive the documents.")
 				}
 			}()
 		}
@@ -128,7 +128,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			a := baseUrl.ResolveReference(hrefUrl)
 
 			// Here we capture the a[href] and put
-			// it to the hrefLinks channel which will
+			// it to the HrefLinks channel which will
 			// be consumed by both the href crawler
 			// goroutines and also the goroutines
 			// that parse the HTML contents and
@@ -137,7 +137,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				// Checking if no filter set first to not cause
 				// a nil reference
 				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
-					s.hrefLinks <- a.String()
+					s.HrefLinks <- a.String()
 				}
 			}()
 		})

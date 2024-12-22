@@ -16,14 +16,14 @@ func TestNewScraper(t *testing.T) {
 		name string
 		want *Scraper
 	}{
-		{name: "Test scraper default values are fine", want: &Scraper{capturedHrefLinkFilter: nil, hrefLinks: make(chan string), capturedDomainDocuments: make(chan *goquery.Document)}},
+		{name: "Test scraper default values are fine", want: &Scraper{capturedHrefLinkFilter: nil, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := New()
 			assert.Nil(t, got.capturedHrefLinkFilter)
-			assert.NotNil(t, got.capturedDomainDocuments)
-			assert.NotNil(t, got.hrefLinks)
+			assert.NotNil(t, got.CapturedDomainDocuments)
+			assert.NotNil(t, got.HrefLinks)
 		})
 	}
 }
@@ -33,7 +33,7 @@ func TestScraper_InitWithValues(t *testing.T) {
 		return true
 	}
 
-	wantScraper := &Scraper{capturedHrefLinkFilter: allowedDomain, hrefLinks: nil}
+	wantScraper := &Scraper{capturedHrefLinkFilter: allowedDomain, HrefLinks: nil}
 
 	s := New()
 
@@ -83,7 +83,7 @@ func TestScraperGetHrefs(t *testing.T) {
 	// Waiting until the first document arrives because
 	// we're not interested in testing crawling.
 	select {
-	case l := <-s.hrefLinks:
+	case l := <-s.HrefLinks:
 		// We have an array of candidates because
 		// we don't guarantee the order of the
 		// hrefs in the channel. On top of
@@ -111,7 +111,7 @@ func TestScraperGetDocuments(t *testing.T) {
 	// Waiting until the first document arrives because
 	// we're not interested in testing crawling.
 	select {
-	case l := <-s.capturedDomainDocuments:
+	case l := <-s.CapturedDomainDocuments:
 		reader := strings.NewReader(TestHtml)
 		d, _ := goquery.NewDocumentFromReader(reader)
 		assert.Equal(t, l, d)
