@@ -24,6 +24,7 @@ type Scraper struct {
 	HrefLinks               chan string
 	scrapeReady             chan struct{}
 	CapturedDomainDocuments chan *goquery.Document
+	workers                 int
 
 	httpClient HttpClient
 }
@@ -49,6 +50,11 @@ func (s *Scraper) SetHttpClient(httpClient *http.Client) *Scraper {
 	return s
 }
 
+func (s *Scraper) SetWorkerAmount(workers int) *Scraper {
+	s.workers = workers
+	return s
+}
+
 func (s *Scraper) Go(baseUrl string) {
 	parsedBaseUrl, err := url.Parse(baseUrl)
 	if err != nil {
@@ -61,7 +67,10 @@ func (s *Scraper) Go(baseUrl string) {
 		// which is the hot loop in this function.
 		s.HrefLinks <- baseUrl
 	}()
-	for i := 0; i < 10; i++ {
+	if s.workers == 0 {
+		s.workers = 1
+	}
+	for i := 0; i < s.workers; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
 	}
 }
