@@ -32,15 +32,12 @@ func main() {
 	s.Go("https://example.com")
 
 	// Wait for the scraper to finish or alternatively consume the channels in real-time
-	s.Wait()
-	//for d := range s.CapturedDomainDocuments {
-	// 		Parse the documents here.
-	//}
-	// or
-	//for d := range s.HrefLinks {
-	//
-	//}
-	//for d := range s.CapturedDomainDocuments {
-	// 		Parse the documents here.
-	//}
+	// NOTE: if you don't consume the documents fast enough, there will be a memory leak 
+    // with goroutines because sending to a channel from a new goroutine creates a stack
+    // for the goroutine etc. which takes up space and that goroutine is blocking on send.
+	// I'm going to think about some good solution for this. Personally I just make sure
+    // there are more receiving goroutines than sending ones.
+	for d := range s.CapturedDomainDocuments {
+			// Parse the documents here.
+	}
 ```
