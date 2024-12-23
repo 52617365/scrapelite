@@ -96,7 +96,10 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			// Checking if no filter set first to not cause
 			// a nil reference
 			if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-				s.HrefLinks <- l
+				select {
+				case s.HrefLinks <- l:
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}()
 		fmt.Println("Visiting:", l)
@@ -117,8 +120,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			go func() {
 				select {
 				case s.CapturedDomainDocuments <- d:
-				case <-time.After(5 * time.Second):
-					log.Fatalln("Channel send to CapturedDomainDocuments blocked for 5 seconds. Something is wrong with your code. Make sure you receive the documents.")
+				case <-time.After(1 * time.Second):
 				}
 			}()
 		}
@@ -147,7 +149,10 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				// Checking if no filter set first to not cause
 				// a nil reference
 				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
-					s.HrefLinks <- a.String()
+					select {
+					case s.HrefLinks <- a.String():
+					case <-time.After(1 * time.Second):
+					}
 				}
 			}()
 		})
