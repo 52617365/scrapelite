@@ -61,7 +61,7 @@ func (s *Scraper) Go(baseUrl string) {
 		// which is the hot loop in this function.
 		s.HrefLinks <- baseUrl
 	}()
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 10; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
 	}
 }
