@@ -96,6 +96,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			log.Println(err)
 			return
 		}
+		defer r.Body.Close()
 		d, err := goquery.NewDocumentFromReader(r.Body)
 		if err != nil {
 			log.Println(err)
