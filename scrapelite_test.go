@@ -110,13 +110,10 @@ func TestScraperGetDocuments(t *testing.T) {
 
 	// Waiting until the first document arrives because
 	// we're not interested in testing crawling.
-	for i := 0; i < 10000; i++ {
-
-		select {
-		case l := <-s.CapturedDomainDocuments:
-			reader := strings.NewReader(TestHtml)
-			d, _ := goquery.NewDocumentFromReader(reader)
-			assert.Equal(t, l, d)
-		}
+	select {
+	case l := <-s.CapturedDomainDocuments:
+		reader := strings.NewReader(TestHtml)
+		d, _ := goquery.NewDocumentFromReader(reader)
+		assert.Equal(t, l, d)
 	}
 }

@@ -85,77 +85,79 @@ func (s *Scraper) Wait() {
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	for l := range s.HrefLinks {
-		// Here we are sending the link back to the channel
-		// because the link we're using to crawl is also going
-		// to be used by the HTML parser that will be receiving
-		// from the HrefLinks channel. AKA we don't want to
-		// get rid of it forever. We send it from its own
-		// goroutine to avoid blocking the main goroutine
-		// thread in this comment scope.
-		go func() {
-			// Checking if no filter set first to not cause
-			// a nil reference
-			if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-				select {
-				case s.HrefLinks <- l:
-				case <-time.After(1 * time.Second):
-				}
-			}
-		}()
-		fmt.Println("Visiting:", l)
-		r, err := s.httpClient.Get(l)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		defer r.Body.Close()
-		d, err := goquery.NewDocumentFromReader(r.Body)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		// Checking if no filter set first to not cause
-		// a nil reference
-		if s.captureDomainFilter == nil || s.captureDomainFilter(l) {
-			go func() {
-				select {
-				case s.CapturedDomainDocuments <- d:
-				case <-time.After(1 * time.Second):
-				}
-			}()
-		}
-		d.Find("a").Each(func(i int, sel *goquery.Selection) {
-			href, ok := sel.Attr("href")
-			if !ok {
-				return
-			}
-			hrefUrl, err := url.Parse(href)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-			// a contains the absolute url from the href.
-			// we do this by combining the initial url
-			// with the href.
-			a := baseUrl.ResolveReference(hrefUrl)
-
-			// Here we capture the a[href] and put
-			// it to the HrefLinks channel which will
-			// be consumed by both the href crawler
-			// goroutines and also the goroutines
-			// that parse the HTML contents and
-			// extract useful data from the page
+		func() {
+			// Here we are sending the link back to the channel
+			// because the link we're using to crawl is also going
+			// to be used by the HTML parser that will be receiving
+			// from the HrefLinks channel. AKA we don't want to
+			// get rid of it forever. We send it from its own
+			// goroutine to avoid blocking the main goroutine
+			// thread in this comment scope.
 			go func() {
 				// Checking if no filter set first to not cause
 				// a nil reference
-				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
+				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
 					select {
-					case s.HrefLinks <- a.String():
+					case s.HrefLinks <- l:
 					case <-time.After(1 * time.Second):
 					}
 				}
 			}()
-		})
+			fmt.Println("Visiting:", l)
+			r, err := s.httpClient.Get(l)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			defer r.Body.Close()
+			d, err := goquery.NewDocumentFromReader(r.Body)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			// Checking if no filter set first to not cause
+			// a nil reference
+			if s.captureDomainFilter == nil || s.captureDomainFilter(l) {
+				go func() {
+					select {
+					case s.CapturedDomainDocuments <- d:
+					case <-time.After(1 * time.Second):
+					}
+				}()
+			}
+			d.Find("a").Each(func(i int, sel *goquery.Selection) {
+				href, ok := sel.Attr("href")
+				if !ok {
+					return
+				}
+				hrefUrl, err := url.Parse(href)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				// a contains the absolute url from the href.
+				// we do this by combining the initial url
+				// with the href.
+				a := baseUrl.ResolveReference(hrefUrl)
+
+				// Here we capture the a[href] and put
+				// it to the HrefLinks channel which will
+				// be consumed by both the href crawler
+				// goroutines and also the goroutines
+				// that parse the HTML contents and
+				// extract useful data from the page
+				go func() {
+					// Checking if no filter set first to not cause
+					// a nil reference
+					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
+						select {
+						case s.HrefLinks <- a.String():
+						case <-time.After(1 * time.Second):
+						}
+					}
+				}()
+			})
+		}()
 	}
 	s.scrapeReady <- struct{}{}
 }
