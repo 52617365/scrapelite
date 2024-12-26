@@ -2,12 +2,12 @@ package scrapelite
 
 import (
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"log"
 	"net/http"
 	"net/url"
-
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 // HttpClient this interface is created to test the whole
@@ -17,17 +17,19 @@ import (
 type HttpClient interface {
 	Get(url string) (resp *http.Response, err error)
 }
-type allowedDomainCallBack func(url string) bool
-type Scraper struct {
-	capturedHrefLinkFilter  allowedDomainCallBack
-	captureDomainFilter     allowedDomainCallBack
-	HrefLinks               chan string
-	scrapeReady             chan struct{}
-	CapturedDomainDocuments chan *goquery.Document
-	workers                 int
+type (
+	allowedDomainCallBack func(url string) bool
+	Scraper               struct {
+		capturedHrefLinkFilter  allowedDomainCallBack
+		captureDomainFilter     allowedDomainCallBack
+		HrefLinks               chan string
+		scrapeReady             chan struct{}
+		CapturedDomainDocuments chan *goquery.Document
+		workers                 int
 
-	httpClient HttpClient
-}
+		httpClient HttpClient
+	}
+)
 
 func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
@@ -74,6 +76,7 @@ func (s *Scraper) Go(baseUrl string) {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
 	}
 }
+
 func (s *Scraper) Wait() {
 	<-s.scrapeReady
 }
@@ -85,6 +88,12 @@ func (s *Scraper) Wait() {
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	for l := range s.HrefLinks {
+		// Wrapping the whole loop iteration in a function
+		// to form a "scope" to defer close the res body
+		// correctly. I did this because I was running into
+		// memory leaking issues and could not really figure
+		// out why it was happening. I got the solution from
+		// here: https://stackoverflow.com/questions/45617758/proper-way-to-release-resources-with-defer-in-a-loop
 		func() {
 			// Here we are sending the link back to the channel
 			// because the link we're using to crawl is also going
