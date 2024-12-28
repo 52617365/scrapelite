@@ -235,13 +235,17 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 					// a nil reference
 					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
 						// Don't add the href to scraped links if the url has already been visited.
-						if s.isVisitedUrl(a.String()) {
-							return
+						if !s.visitDuplicates {
+							if s.isVisitedUrl(a.String()) {
+								return
+							}
 						}
 						select {
 						case s.HrefLinks <- a.String():
 							{
-								s.addVisitedUrl(a.String())
+								if !s.visitDuplicates {
+									s.addVisitedUrl(a.String())
+								}
 							}
 						case <-time.After(1 * time.Second):
 						}
