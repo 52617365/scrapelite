@@ -170,16 +170,16 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			// get rid of it forever. We send it from its own
 			// goroutine to avoid blocking the main goroutine
 			// thread in this comment scope.
-			go func() {
-				// Checking if no filter set first to not cause
-				// a nil reference
-				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-					select {
-					case s.HrefLinks <- l:
-					case <-time.After(1 * time.Second):
-					}
-				}
-			}()
+			// go func() {
+			// 	// Checking if no filter set first to not cause
+			// 	// a nil reference
+			// 	if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
+			// 		select {
+			// 		case s.HrefLinks <- l:
+			// 		case <-time.After(1 * time.Second):
+			// 		}
+			// 	}
+			// }()
 
 			if s.showVisitingMessages {
 				fmt.Println("Visiting:", l)
