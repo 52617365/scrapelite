@@ -255,7 +255,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		}()
 	}
 	s.scrapeReady <- struct{}{}
-	close(s.scrapeReady)
-	close(s.HrefLinks)
-	close(s.CapturedDomainDocuments)
+	// close(s.scrapeReady)
+	// close(s.HrefLinks)
+	// close(s.CapturedDomainDocuments)
 }
