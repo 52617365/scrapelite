@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -17,6 +18,7 @@ import (
 type CustomHttpClient interface {
 	Get(url string) (resp *http.Response, err error)
 }
+
 type (
 	// allowedDomainCallBack is the type of function that will be used
 	// to check if a domain should be visited in certain cases.
@@ -29,7 +31,7 @@ type (
 		scrapeReady             chan struct{}
 		CapturedDomainDocuments chan *goquery.Document
 		workers                 int
-		// VisitedUrls will be populated with contents
+		// visitedUrls will be populated with contents
 		// if the user decides to use VisitDuplicates.
 		// It is simply a map that contains an url as
 		// a key and then a boolean that is set to true
@@ -37,11 +39,12 @@ type (
 		// The fields is Exported because I want to give the
 		// user the freedom to get rid of this memory whenever
 		// they want.
-		VisitedUrls map[string]bool
+		visitedUrls        map[string]bool
+		visitedUrlsRWMutex sync.RWMutex
 
 		// visitedUrlsChan is the internal channel that is
 		// used to sync the visited urls into the VisitedUrls map
-		visitedUrlsChan chan string
+		// visitedUrlsChan chan string
 
 		// visitDuplicates if this is set to true, duplicate links will be
 		// visited. The default value is false because I don't really want to scrape
@@ -59,7 +62,7 @@ type (
 
 func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
-	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{}), visitedUrlsChan: make(chan string), VisitedUrls: make(map[string]bool)}
+	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{}), visitedUrls: make(map[string]bool), visitedUrlsRWMutex: sync.RWMutex{}}
 	return s
 }
 
@@ -111,9 +114,6 @@ func (s *Scraper) Go(baseUrl string) {
 	for i := 0; i < s.workers; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
 	}
-	// Syncing the visited urls chan into a map that the scraping goroutines
-	// populate.
-	go s.syncVisitedUrls()
 }
 
 func (s *Scraper) Wait() {
@@ -125,14 +125,28 @@ func (s *Scraper) Wait() {
 // if we wanted this to be bullet-proof we would be using a RW Mutex but
 // using that would slow down the whole thing by a lot so I decided to be
 // mediocre with the visited urls by using a channel.
-func (s *Scraper) syncVisitedUrls() {
-	for u := range s.visitedUrlsChan {
-		s.VisitedUrls[u] = true
-	}
-}
+// func (s *Scraper) syncVisitedUrls() {
+// 	for u := range s.visitedUrlsChan {
+// 		s.VisitedUrls[u] = true
+// 	}
+// }
 
 func (s *Scraper) isVisitedUrl(url string) bool {
-	return s.VisitedUrls[url]
+	s.visitedUrlsRWMutex.Lock()
+
+	v := s.visitedUrls[url]
+
+	s.visitedUrlsRWMutex.Unlock()
+
+	return v
+}
+
+func (s *Scraper) addVisitedUrl(url string) {
+	s.visitedUrlsRWMutex.Lock()
+
+	s.visitedUrls[url] = true
+
+	s.visitedUrlsRWMutex.Unlock()
 }
 
 // ScrapeDocumentsAndHrefLinks scrapes the initial url
@@ -227,7 +241,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 						select {
 						case s.HrefLinks <- a.String():
 							{
-								s.visitedUrlsChan <- a.String()
+								s.addVisitedUrl(a.String())
 							}
 						case <-time.After(1 * time.Second):
 						}
@@ -240,5 +254,4 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	close(s.scrapeReady)
 	close(s.HrefLinks)
 	close(s.CapturedDomainDocuments)
-	close(s.visitedUrlsChan)
 }
