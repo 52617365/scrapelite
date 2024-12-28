@@ -36,11 +36,7 @@ type (
 		// It is simply a map that contains an url as
 		// a key and then a boolean that is set to true
 		// if said url is already visited.
-		// The fields is Exported because I want to give the
-		// user the freedom to get rid of this memory whenever
-		// they want.
-		visitedUrls        map[string]bool
-		visitedUrlsRWMutex sync.RWMutex
+		visitedUrls sync.Map
 
 		// visitedUrlsChan is the internal channel that is
 		// used to sync the visited urls into the VisitedUrls map
@@ -62,7 +58,7 @@ type (
 
 func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
-	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{}), visitedUrls: make(map[string]bool), visitedUrlsRWMutex: sync.RWMutex{}}
+	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{}), visitedUrls: sync.Map{}}
 	return s
 }
 
@@ -132,21 +128,17 @@ func (s *Scraper) Wait() {
 // }
 
 func (s *Scraper) isVisitedUrl(url string) bool {
-	s.visitedUrlsRWMutex.Lock()
-
-	v := s.visitedUrls[url]
-
-	s.visitedUrlsRWMutex.Unlock()
-
-	return v
+	_, ok := s.visitedUrls.Load(url)
+	if ok {
+		// fmt.Println("we confirmed that the following url was in visited urls", url)
+	} else {
+		fmt.Println("we confirmed that the following url was NOT in visited urls", url)
+	}
+	return ok
 }
 
 func (s *Scraper) addVisitedUrl(url string) {
-	s.visitedUrlsRWMutex.Lock()
-
-	s.visitedUrls[url] = true
-
-	s.visitedUrlsRWMutex.Unlock()
+	s.visitedUrls.Store(url, true)
 }
 
 // ScrapeDocumentsAndHrefLinks scrapes the initial url
@@ -156,6 +148,13 @@ func (s *Scraper) addVisitedUrl(url string) {
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	for l := range s.HrefLinks {
+		if !s.visitDuplicates {
+			if s.isVisitedUrl(l) {
+				fmt.Println("We already visited this, skipping:", l)
+				continue
+				// fmt.Println("why are we here?")
+			}
+		}
 		// Wrapping the whole loop iteration in a function
 		// to form a "scope" to defer close the res body
 		// correctly. I did this because I was running into
@@ -233,15 +232,17 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 					// Checking if no filter set first to not cause
 					// a nil reference
 					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
-						// Don't add the href to scraped links if the url has already been visited.
 						if !s.visitDuplicates {
-							if s.isVisitedUrl(a.String()) {
-								return
-							}
+							// if s.isVisitedUrl(a.String()) {
+							// return
+							// }
 						}
 						select {
 						case s.HrefLinks <- a.String():
 							{
+								// If we don't want to go to duplicate pages, we
+								// add the url into the visited urls map so we don't
+								// go there again.
 								if !s.visitDuplicates {
 									s.addVisitedUrl(a.String())
 								}
