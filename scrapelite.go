@@ -10,14 +10,17 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// HttpClient this interface is created to test the whole
+// CustomHttpClient this interface is created to test the whole
 // scraping functionality without sending an actual request.
 // The main function does *http.Client.Get and in tests
 // we obviously don't want to do that.
-type HttpClient interface {
+type CustomHttpClient interface {
 	Get(url string) (resp *http.Response, err error)
 }
 type (
+	// allowedDomainCallBack is the type of function that will be used
+	// to check if a domain should be visited in certain cases.
+	// it contains conditional/s that will be matched.
 	allowedDomainCallBack func(url string) bool
 	Scraper               struct {
 		capturedHrefLinkFilter  allowedDomainCallBack
@@ -26,14 +29,37 @@ type (
 		scrapeReady             chan struct{}
 		CapturedDomainDocuments chan *goquery.Document
 		workers                 int
+		// VisitedUrls will be populated with contents
+		// if the user decides to use VisitDuplicates.
+		// It is simply a map that contains an url as
+		// a key and then a boolean that is set to true
+		// if said url is already visited.
+		// The fields is Exported because I want to give the
+		// user the freedom to get rid of this memory whenever
+		// they want.
+		VisitedUrls map[string]bool
 
-		httpClient HttpClient
+		// visitedUrlsChan is the internal channel that is
+		// used to sync the visited urls into the VisitedUrls map
+		visitedUrlsChan chan string
+
+		// visitDuplicates if this is set to true, duplicate links will be
+		// visited. The default value is false because I don't really want to scrape
+		// the same sites multiple times.
+		visitDuplicates bool
+
+		// showVisitingMessages contains a boolean that if set will print out
+		// every website that is being visited. This is handy in debugging
+		// situations and I usually keep it on.
+		showVisitingMessages bool
+
+		httpClient CustomHttpClient
 	}
 )
 
 func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
-	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{})}
+	s := &Scraper{httpClient: c, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document), scrapeReady: make(chan struct{}), visitedUrlsChan: make(chan string), VisitedUrls: make(map[string]bool)}
 	return s
 }
 
@@ -57,6 +83,16 @@ func (s *Scraper) SetWorkerAmount(workers int) *Scraper {
 	return s
 }
 
+func (s *Scraper) SetVisitDuplicates(b bool) *Scraper {
+	s.visitDuplicates = b
+	return s
+}
+
+func (s *Scraper) SetVisitingMessages(b bool) *Scraper {
+	s.visitDuplicates = b
+	return s
+}
+
 func (s *Scraper) Go(baseUrl string) {
 	parsedBaseUrl, err := url.Parse(baseUrl)
 	if err != nil {
@@ -75,10 +111,28 @@ func (s *Scraper) Go(baseUrl string) {
 	for i := 0; i < s.workers; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
 	}
+	// Syncing the visited urls chan into a map that the scraping goroutines
+	// populate.
+	go s.syncVisitedUrls()
 }
 
 func (s *Scraper) Wait() {
 	<-s.scrapeReady
+}
+
+// syncVisitedUrls note that this solution is not bullet-proof
+// because a goroutine could be reading an "outdated" map of visited urls.
+// if we wanted this to be bullet-proof we would be using a RW Mutex but
+// using that would slow down the whole thing by a lot so I decided to be
+// mediocre with the visited urls by using a channel.
+func (s *Scraper) syncVisitedUrls() {
+	for u := range s.visitedUrlsChan {
+		s.VisitedUrls[u] = true
+	}
+}
+
+func (s *Scraper) isVisitedUrl(url string) bool {
+	return s.VisitedUrls[url]
 }
 
 // ScrapeDocumentsAndHrefLinks scrapes the initial url
@@ -102,17 +156,24 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			// get rid of it forever. We send it from its own
 			// goroutine to avoid blocking the main goroutine
 			// thread in this comment scope.
-			go func() {
-				// Checking if no filter set first to not cause
-				// a nil reference
-				if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-					select {
-					case s.HrefLinks <- l:
-					case <-time.After(1 * time.Second):
-					}
-				}
-			}()
-			fmt.Println("Visiting:", l)
+			// go func() {
+			// 	// Checking if no filter set first to not cause
+			// 	// a nil reference
+			// 	if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
+			// 		select {
+			// 		case s.HrefLinks <- l:
+			// 			{
+			// 				s.visitedUrlsChan <- l
+			// 			}
+			// 		case <-time.After(1 * time.Second):
+			// 		}
+			// 	}
+			// }()
+
+			if s.showVisitingMessages {
+				fmt.Println("Visiting:", l)
+			}
+
 			r, err := s.httpClient.Get(l)
 			if err != nil {
 				log.Println(err)
@@ -159,8 +220,15 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 					// Checking if no filter set first to not cause
 					// a nil reference
 					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
+						// Don't add the href to scraped links if the url has already been visited.
+						if s.isVisitedUrl(a.String()) {
+							return
+						}
 						select {
 						case s.HrefLinks <- a.String():
+							{
+								s.visitedUrlsChan <- a.String()
+							}
 						case <-time.After(1 * time.Second):
 						}
 					}
@@ -169,4 +237,8 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		}()
 	}
 	s.scrapeReady <- struct{}{}
+	close(s.scrapeReady)
+	close(s.HrefLinks)
+	close(s.CapturedDomainDocuments)
+	close(s.visitedUrlsChan)
 }
