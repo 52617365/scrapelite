@@ -92,7 +92,7 @@ func (s *Scraper) SetVisitDuplicates(b bool) *Scraper {
 }
 
 func (s *Scraper) SetVisitingMessages(b bool) *Scraper {
-	s.visitDuplicates = b
+	s.showVisitingMessages = b
 	return s
 }
 
