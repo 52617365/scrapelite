@@ -156,19 +156,24 @@ func (s *Scraper) Wait() {
 // }
 
 func (s *Scraper) isVisitedUrl(url string) bool {
-	fmt.Println("Locking visitedUrls for reading")
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Trying to take lock to load %s from the visitedUrls map", url))
+	}
 	_, ok := s.visitedUrls.Load(url)
-	if ok {
-		// fmt.Println("we confirmed that the following url was in visited urls", url)
-	} else {
-		// fmt.Println("we confirmed that the following url was NOT in visited urls", url)
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Successfully took the lock and got the result %s:%v", url, ok))
 	}
 	return ok
 }
 
 func (s *Scraper) addVisitedUrl(url string) {
-	fmt.Println("Locking visitedUrls for writing")
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Trying to take the lock to add %s to the visitedUrls map", url))
+	}
 	s.visitedUrls.Store(url, true)
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Successfully added %s to the visitedUrls map", url))
+	}
 }
 
 // ScrapeDocumentsAndHrefLinks scrapes the initial url
