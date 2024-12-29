@@ -128,6 +128,7 @@ func (s *Scraper) Wait() {
 // }
 
 func (s *Scraper) isVisitedUrl(url string) bool {
+	fmt.Println("Locking visitedUrls for reading")
 	_, ok := s.visitedUrls.Load(url)
 	if ok {
 		// fmt.Println("we confirmed that the following url was in visited urls", url)
@@ -138,6 +139,7 @@ func (s *Scraper) isVisitedUrl(url string) bool {
 }
 
 func (s *Scraper) addVisitedUrl(url string) {
+	fmt.Println("Locking visitedUrls for writing")
 	s.visitedUrls.Store(url, true)
 }
 

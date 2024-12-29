@@ -2,13 +2,14 @@ package scrapelite
 
 import (
 	"bytes"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewScraper(t *testing.T) {
@@ -64,8 +65,7 @@ var TestHtml = `
 // MockHttpClient is a mock *http.Client
 // created to return a local HTML file instead
 // of retrieving the HTML from an external source.
-type MockHttpClient struct {
-}
+type MockHttpClient struct{}
 
 func (m *MockHttpClient) Get(url string) (resp *http.Response, err error) {
 	// h contains example HTML for testing purposes.
@@ -82,23 +82,21 @@ func TestScraperGetHrefs(t *testing.T) {
 
 	// Waiting until the first document arrives because
 	// we're not interested in testing crawling.
-	select {
-	case l := <-s.HrefLinks:
-		// We have an array of candidates because
-		// we don't guarantee the order of the
-		// hrefs in the channel. On top of
-		// this, the order does not really matter
-		// only the fact that they exist matter.
-		// They will all be crawled eventually either way.
-		candidates := []string{"https://example.com", "https://google.com", "https://example.com/relative/path", "https://example.com/parent/path"}
-		var found bool
-		for _, c := range candidates {
-			if c == l {
-				found = true
-			}
+	l := <-s.HrefLinks
+	// We have an array of candidates because
+	// we don't guarantee the order of the
+	// hrefs in the channel. On top of
+	// this, the order does not really matter
+	// only the fact that they exist matter.
+	// They will all be crawled eventually either way.
+	candidates := []string{"https://example.com", "https://google.com", "https://example.com/relative/path", "https://example.com/parent/path"}
+	var found bool
+	for _, c := range candidates {
+		if c == l {
+			found = true
 		}
-		assert.True(t, found, "expected to find a matching link")
 	}
+	assert.True(t, found, "expected to find a matching link")
 }
 
 func TestScraperGetDocuments(t *testing.T) {
@@ -110,10 +108,8 @@ func TestScraperGetDocuments(t *testing.T) {
 
 	// Waiting until the first document arrives because
 	// we're not interested in testing crawling.
-	select {
-	case l := <-s.CapturedDomainDocuments:
-		reader := strings.NewReader(TestHtml)
-		d, _ := goquery.NewDocumentFromReader(reader)
-		assert.Equal(t, l, d)
-	}
+	l := <-s.CapturedDomainDocuments
+	reader := strings.NewReader(TestHtml)
+	d, _ := goquery.NewDocumentFromReader(reader)
+	assert.Equal(t, l, d)
 }
