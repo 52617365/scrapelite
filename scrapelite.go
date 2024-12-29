@@ -132,7 +132,7 @@ func (s *Scraper) isVisitedUrl(url string) bool {
 	if ok {
 		// fmt.Println("we confirmed that the following url was in visited urls", url)
 	} else {
-		fmt.Println("we confirmed that the following url was NOT in visited urls", url)
+		// fmt.Println("we confirmed that the following url was NOT in visited urls", url)
 	}
 	return ok
 }
@@ -148,13 +148,6 @@ func (s *Scraper) addVisitedUrl(url string) {
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	for l := range s.HrefLinks {
-		if !s.visitDuplicates {
-			if s.isVisitedUrl(l) {
-				fmt.Println("We already visited this, skipping:", l)
-				continue
-				// fmt.Println("why are we here?")
-			}
-		}
 		// Wrapping the whole loop iteration in a function
 		// to form a "scope" to defer close the res body
 		// correctly. I did this because I was running into
@@ -162,24 +155,6 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		// out why it was happening. I got the solution from
 		// here: https://stackoverflow.com/questions/45617758/proper-way-to-release-resources-with-defer-in-a-loop
 		func() {
-			// Here we are sending the link back to the channel
-			// because the link we're using to crawl is also going
-			// to be used by the HTML parser that will be receiving
-			// from the HrefLinks channel. AKA we don't want to
-			// get rid of it forever. We send it from its own
-			// goroutine to avoid blocking the main goroutine
-			// thread in this comment scope.
-			// go func() {
-			// 	// Checking if no filter set first to not cause
-			// 	// a nil reference
-			// 	if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(l) {
-			// 		select {
-			// 		case s.HrefLinks <- l:
-			// 		case <-time.After(1 * time.Second):
-			// 		}
-			// 	}
-			// }()
-
 			if s.showVisitingMessages {
 				fmt.Println("Visiting:", l)
 			}
@@ -190,6 +165,11 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				return
 			}
 			defer r.Body.Close()
+
+			if !s.visitDuplicates {
+				s.addVisitedUrl(l)
+			}
+
 			d, err := goquery.NewDocumentFromReader(r.Body)
 			if err != nil {
 				log.Println(err)
@@ -222,31 +202,21 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				// with the href.
 				a := baseUrl.ResolveReference(hrefUrl)
 
+				// If the url is already visited, let's not add it to the s.HrefLinks queue.
+				if !s.visitDuplicates {
+					if s.isVisitedUrl(a.String()) {
+						return
+					}
+				}
 				// Here we capture the a[href] and put
 				// it to the HrefLinks channel which will
-				// be consumed by both the href crawler
-				// goroutines and also the goroutines
-				// that parse the HTML contents and
-				// extract useful data from the page
+				// be consumed by this same loop.
 				go func() {
 					// Checking if no filter set first to not cause
 					// a nil reference
 					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
-						if !s.visitDuplicates {
-							// if s.isVisitedUrl(a.String()) {
-							// return
-							// }
-						}
 						select {
 						case s.HrefLinks <- a.String():
-							{
-								// If we don't want to go to duplicate pages, we
-								// add the url into the visited urls map so we don't
-								// go there again.
-								if !s.visitDuplicates {
-									s.addVisitedUrl(a.String())
-								}
-							}
 						case <-time.After(1 * time.Second):
 						}
 					}
@@ -255,7 +225,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		}()
 	}
 	s.scrapeReady <- struct{}{}
-	// close(s.scrapeReady)
-	// close(s.HrefLinks)
-	// close(s.CapturedDomainDocuments)
+	close(s.scrapeReady)
+	close(s.HrefLinks)
+	close(s.CapturedDomainDocuments)
 }
