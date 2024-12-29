@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"runtime"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ type (
 		// situations and I usually keep it on.
 		showVisitingMessages bool
 
+		// verbose provides some nice printing to diagnose issues.
+		verbose bool
+
 		httpClient CustomHttpClient
 	}
 )
@@ -69,6 +73,11 @@ func (s *Scraper) SetCapturedDocumentsFilter(allowedDomainFilter allowedDomainCa
 
 func (s *Scraper) SetHrefLinkCaptureFilter(allowedDomainFilter allowedDomainCallBack) *Scraper {
 	s.capturedHrefLinkFilter = allowedDomainFilter
+	return s
+}
+
+func (s *Scraper) SetVerbose(v bool) *Scraper {
+	s.verbose = v
 	return s
 }
 
@@ -92,23 +101,42 @@ func (s *Scraper) SetVisitingMessages(b bool) *Scraper {
 	return s
 }
 
+func (s *Scraper) verbosePrint(message string) {
+	_, file, line, _ := runtime.Caller(0)
+	fmt.Printf("[VERBOSE %s:%d]: %s\n", file, line, message)
+}
+
 func (s *Scraper) Go(baseUrl string) {
 	parsedBaseUrl, err := url.Parse(baseUrl)
 	if err != nil {
 		log.Fatalln("Error parsing initial url: ", parsedBaseUrl)
 	}
+
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Started scraper with base url: %s", baseUrl))
+	}
+
 	go func() {
 		// Adding the initial urls into the HrefLinks chan so that
 		// we can start from somewhere. Else the chan would be empty,
 		// and we would be blocking forever in the receiving side
 		// which is the hot loop in this function.
 		s.HrefLinks <- baseUrl
+		s.verbosePrint(fmt.Sprintf("Added %s to the s.HrefLinks channel queue", baseUrl))
 	}()
+
 	if s.workers == 0 {
+		if s.verbose {
+			s.verbosePrint("workers was set to 0 it was reassigned to 1")
+		}
 		s.workers = 1
 	}
+
 	for i := 0; i < s.workers; i++ {
 		go s.ScrapeDocumentsAndHrefLinks(parsedBaseUrl)
+	}
+	if s.verbose {
+		s.verbosePrint(fmt.Sprintf("Created %d workers for scraper", s.workers))
 	}
 }
 
@@ -166,9 +194,15 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				log.Println(err)
 				return
 			}
+			if s.verbose {
+				s.verbosePrint(fmt.Sprintf("We sent a request to %s and received status %d", l, r.StatusCode))
+			}
 			defer r.Body.Close()
 
 			if !s.visitDuplicates {
+				if s.verbose {
+					s.verbosePrint(fmt.Sprintf("Added %s to the cache of visited urls", l))
+				}
 				s.addVisitedUrl(l)
 			}
 
@@ -183,7 +217,13 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				go func() {
 					select {
 					case s.CapturedDomainDocuments <- d:
+						if s.verbose {
+							s.verbosePrint(fmt.Sprintf("Sent %v to documents channel", l))
+						}
 					case <-time.After(1 * time.Second):
+						if s.verbose {
+							s.verbosePrint(fmt.Sprintf("Tried to send %v to documents channel but it timed out", l))
+						}
 					}
 				}()
 			}
@@ -191,13 +231,25 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			d.Find("a").Each(func(i int, sel *goquery.Selection) {
 				href, ok := sel.Attr("href")
 				if !ok {
+					if s.verbose {
+						s.verbosePrint("Tried to get the href attribute from the a selector but it failed, we are now going to return")
+					}
 					return
+				}
+				if s.verbose {
+					s.verbosePrint(fmt.Sprintf("We got the %s href selector from the a tag successfully", href))
 				}
 
 				hrefUrl, err := url.Parse(href)
 				if err != nil {
+					if s.verbose {
+						s.verbosePrint(fmt.Sprintf("Tried to parse %s but we got an error", href))
+					}
 					log.Println(err)
 					return
+				}
+				if s.verbose {
+					s.verbosePrint(fmt.Sprintf("Successfully parsed %s into an url.Url", href))
 				}
 				// a contains the absolute url from the href.
 				// we do this by combining the initial url
@@ -207,6 +259,9 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				// If the url is already visited, let's not add it to the s.HrefLinks queue.
 				if !s.visitDuplicates {
 					if s.isVisitedUrl(a.String()) {
+						if s.verbose {
+							s.verbosePrint(fmt.Sprintf("%s was already visited so we skipped it completely", a.String()))
+						}
 						return
 					}
 				}
@@ -219,7 +274,13 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
 						select {
 						case s.HrefLinks <- a.String():
+							if s.verbose {
+								s.verbosePrint(fmt.Sprintf("Added %s to the channel of href links", a.String()))
+							}
 						case <-time.After(1 * time.Second):
+							if s.verbose {
+								s.verbosePrint(fmt.Sprintf("Tried to send %s to HrefLinks channel but it timed out", a.String()))
+							}
 						}
 					}
 				}()
@@ -227,7 +288,14 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		}()
 	}
 	s.scrapeReady <- struct{}{}
+
+	if s.verbose {
+		s.verbosePrint("Successfully notified the scrapeReady channel that we are ready scraping")
+	}
 	close(s.scrapeReady)
 	close(s.HrefLinks)
 	close(s.CapturedDomainDocuments)
+	if s.verbose {
+		s.verbosePrint("Successfully closed the scrapeReady, Hreflinks, CapturedDomainDocuments channels")
+	}
 }
