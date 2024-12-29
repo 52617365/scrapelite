@@ -122,7 +122,9 @@ func (s *Scraper) Go(baseUrl string) {
 		// and we would be blocking forever in the receiving side
 		// which is the hot loop in this function.
 		s.HrefLinks <- baseUrl
-		s.verbosePrint(fmt.Sprintf("Added %s to the s.HrefLinks channel queue", baseUrl))
+		if s.verbose {
+			s.verbosePrint(fmt.Sprintf("Added %s to the s.HrefLinks channel queue", baseUrl))
+		}
 	}()
 
 	if s.workers == 0 {
@@ -205,10 +207,10 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 			defer r.Body.Close()
 
 			if !s.visitDuplicates {
+				s.addVisitedUrl(l)
 				if s.verbose {
 					s.verbosePrint(fmt.Sprintf("Added %s to the cache of visited urls", l))
 				}
-				s.addVisitedUrl(l)
 			}
 
 			d, err := goquery.NewDocumentFromReader(r.Body)
@@ -225,7 +227,7 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 						if s.verbose {
 							s.verbosePrint(fmt.Sprintf("Sent %v to documents channel", l))
 						}
-					case <-time.After(1 * time.Second):
+					case <-time.After(2 * time.Second):
 						if s.verbose {
 							s.verbosePrint(fmt.Sprintf("Tried to send %v to documents channel but it timed out", l))
 						}
@@ -261,6 +263,12 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				// with the href.
 				a := baseUrl.ResolveReference(hrefUrl)
 
+				// returning early to avoid having to take a lock with a url that we don't
+				// even care about
+				if s.capturedHrefLinkFilter != nil && !s.capturedHrefLinkFilter(a.String()) {
+					return
+				}
+
 				// If the url is already visited, let's not add it to the s.HrefLinks queue.
 				if !s.visitDuplicates {
 					if s.isVisitedUrl(a.String()) {
@@ -276,16 +284,14 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 				go func() {
 					// Checking if no filter set first to not cause
 					// a nil reference
-					if s.capturedHrefLinkFilter == nil || s.capturedHrefLinkFilter(a.String()) {
-						select {
-						case s.HrefLinks <- a.String():
-							if s.verbose {
-								s.verbosePrint(fmt.Sprintf("Added %s to the channel of href links", a.String()))
-							}
-						case <-time.After(1 * time.Second):
-							if s.verbose {
-								s.verbosePrint(fmt.Sprintf("Tried to send %s to HrefLinks channel but it timed out", a.String()))
-							}
+					select {
+					case s.HrefLinks <- a.String():
+						if s.verbose {
+							s.verbosePrint(fmt.Sprintf("Added %s to the channel of href links", a.String()))
+						}
+					case <-time.After(2 * time.Second):
+						if s.verbose {
+							s.verbosePrint(fmt.Sprintf("Tried to send %s to HrefLinks channel but it timed out", a.String()))
 						}
 					}
 				}()
