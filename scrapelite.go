@@ -58,6 +58,9 @@ type (
 
 		// ConcurrentRequests tells the scraper how many goroutines should be scraping at a time.
 		// This exists to avoid rate limiting
+		// NOTE: I don't think this is that great of a way to do ratelimiting on our side.
+		//   It would still mean that n amount of goroutines are sending requests. Maybe a
+		//   better way would be to have a requests per second?
 		ConcurrentRequests int
 
 		// Looking to replace ConcurrentRequests.
