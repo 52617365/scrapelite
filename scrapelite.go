@@ -3,6 +3,7 @@ package scrapelite
 import (
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -15,7 +16,7 @@ import (
 // CustomHttpClient this interface is created to test the whole
 // scraping functionality without sending an actual request.
 // The main function does *http.Client.Get and in tests
-// we obviously don't want to do that.
+// we obviously don't want to	 do that.
 type CustomHttpClient interface {
 	Get(url string) (resp *http.Response, err error)
 }
@@ -56,20 +57,14 @@ type (
 		// verbose provides some nice printing to diagnose issues.
 		Verbose bool
 
-		// ConcurrentRequests tells the scraper how many goroutines should be scraping at a time.
-		// This exists to avoid rate limiting
-		// NOTE: I don't think this is that great of a way to do ratelimiting on our side.
-		//   It would still mean that n amount of goroutines are sending requests. Maybe a
-		//   better way would be to have a requests per second?
-		ConcurrentRequests int
+		RateLimit bool
 
-		// Looking to replace ConcurrentRequests.
-		// Maybe waiting for time.Tick(time.Second / amount of workers)
-		// on every goroutine iteration?
+		// RequestsPerSecond defines how many requests we want to send per second.
+		// only works if RateLimit is true, by default it's set to true.
 		RequestsPerSecond int
 
 		// concurrentRequestsChan buffered channel of n where n is ConcurrentRequests
-		concurrentRequestsChan chan struct{}
+		// concurrentRequestsChan chan struct{}
 
 		HttpClient CustomHttpClient
 	}
@@ -85,8 +80,10 @@ func New() *Scraper {
 	s.CapturedDomainDocuments = make(chan *goquery.Document, 1)
 	s.ScrapeReady = make(chan struct{}, 1)
 	s.VisitedUrls = sync.Map{}
-	s.ConcurrentRequests = 100
-	s.concurrentRequestsChan = make(chan struct{}, s.ConcurrentRequests)
+	s.RateLimit = true
+	if s.RateLimit {
+		s.RequestsPerSecond = 10
+	}
 
 	return s
 }
@@ -104,6 +101,10 @@ func (s *Scraper) Go(baseUrl string) {
 
 	if s.Verbose {
 		s.verbosePrint(fmt.Sprintf("Started scraper with base url: %s", baseUrl))
+	}
+
+	if s.RequestsPerSecond > 1 && !s.RateLimit {
+		slog.Info("setting RequestsPerSecond without setting RateLimit to true does nothing")
 	}
 
 	go func() {
@@ -163,8 +164,20 @@ func (s *Scraper) addVisitedUrl(url string) {
 // The user can provide a closure that is matched on the urls
 // to make sure that the correct urls are being stored.
 func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
+	Assert(s.Workers != 0, "Workers was zero, why?")
+	if s.RateLimit {
+		Assert(s.RequestsPerSecond != 0, "RequestsPerSecond was zero, why?")
+	}
+
+	requestsPerSecond := s.RequestsPerSecond / s.Workers
+	waitTick := int(time.Second) / requestsPerSecond
+
 	for l := range s.HrefLinks {
-		s.concurrentRequestsChan <- struct{}{}
+		// Waiting for waitTick time to fulfill RequestsPerSecond.
+		if s.RateLimit {
+			<-time.After(time.Duration(waitTick))
+		}
+
 		// Wrapping the whole loop iteration in a function
 		// to form a "scope" to defer close the res body
 		// correctly. I did this because I was running into
@@ -172,9 +185,6 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		// out why it was happening. I got the solution from
 		// here: https://stackoverflow.com/questions/45617758/proper-way-to-release-resources-with-defer-in-a-loop
 		func() {
-			// Waiting for permission to continue by receiving from the channel
-			<-s.concurrentRequestsChan
-
 			if s.ShowVisitingMessages {
 				fmt.Println("Visiting:", l)
 			}
@@ -289,5 +299,11 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	close(s.CapturedDomainDocuments)
 	if s.Verbose {
 		s.verbosePrint("Successfully closed the scrapeReady, Hreflinks, CapturedDomainDocuments channels")
+	}
+}
+
+func Assert(b bool, s string) {
+	if !b {
+		log.Fatal(s)
 	}
 }

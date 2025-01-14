@@ -17,12 +17,12 @@ func TestNewScraper(t *testing.T) {
 		name string
 		want *Scraper
 	}{
-		{name: "Test scraper default values are fine", want: &Scraper{capturedHrefLinkFilter: nil, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document)}},
+		{name: "Test scraper default values are fine", want: &Scraper{CapturedHrefLinkFilter: nil, HrefLinks: make(chan string), CapturedDomainDocuments: make(chan *goquery.Document)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := New()
-			assert.Nil(t, got.capturedHrefLinkFilter)
+			assert.Nil(t, got.CapturedHrefLinkFilter)
 			assert.NotNil(t, got.CapturedDomainDocuments)
 			assert.NotNil(t, got.HrefLinks)
 		})
@@ -34,15 +34,13 @@ func TestScraper_InitWithValues(t *testing.T) {
 		return true
 	}
 
-	wantScraper := &Scraper{capturedHrefLinkFilter: allowedDomain, HrefLinks: nil}
+	wantScraper := &Scraper{CapturedHrefLinkFilter: allowedDomain, HrefLinks: nil}
 
+	wantScraper.CaptureDomainFilter = wantScraper.CapturedHrefLinkFilter
 	s := New()
 
-	s.SetCapturedDocumentsFilter(wantScraper.capturedHrefLinkFilter)
-	s.SetHrefLinkCaptureFilter(wantScraper.capturedHrefLinkFilter)
-
-	assert.NotNil(t, s.capturedHrefLinkFilter)
-	assert.NotNil(t, s.captureDomainFilter)
+	assert.NotNil(t, s.CapturedHrefLinkFilter)
+	assert.NotNil(t, s.CaptureDomainFilter)
 }
 
 var TestBaseUrl = "https://example.com"
@@ -76,7 +74,7 @@ func (m *MockHttpClient) Get(url string) (resp *http.Response, err error) {
 func TestScraperGetHrefs(t *testing.T) {
 	os.Stdout, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	s := New()
-	s.httpClient = &MockHttpClient{}
+	s.HttpClient = &MockHttpClient{}
 
 	s.Go(TestBaseUrl)
 
@@ -102,7 +100,9 @@ func TestScraperGetHrefs(t *testing.T) {
 func TestScraperGetDocuments(t *testing.T) {
 	os.Stdout, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	s := New()
-	s.httpClient = &MockHttpClient{}
+	s.HttpClient = &MockHttpClient{}
+	s.RequestsPerSecond = 200
+	s.RateLimit = true
 
 	s.Go(TestBaseUrl)
 
