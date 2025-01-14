@@ -60,6 +60,11 @@ type (
 		// This exists to avoid rate limiting
 		ConcurrentRequests int
 
+		// Looking to replace ConcurrentRequests.
+		// Maybe waiting for time.Tick(time.Second / amount of workers)
+		// on every goroutine iteration?
+		RequestsPerSecond int
+
 		// concurrentRequestsChan buffered channel of n where n is ConcurrentRequests
 		concurrentRequestsChan chan struct{}
 
