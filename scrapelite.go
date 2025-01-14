@@ -76,6 +76,7 @@ func New() *Scraper {
 	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{}}
 
 	s := &Scraper{}
+	s.Workers = 1
 	s.HttpClient = c
 	s.HrefLinks = make(chan string)
 	s.CapturedDomainDocuments = make(chan *goquery.Document, 1)
