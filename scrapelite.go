@@ -40,31 +40,28 @@ type (
 		// if said url is already visited.
 		VisitedUrls sync.Map
 
-		// visitedUrlsChan is the internal channel that is
-		// used to sync the visited urls into the VisitedUrls map
-		// visitedUrlsChan chan string
-
-		// visitDuplicates if this is set to true, duplicate links will be
+		// VisitDuplicates if this is set to true, duplicate links will be
 		// visited. The default value is false because I don't really want to scrape
 		// the same sites multiple times.
 		VisitDuplicates bool
 
-		// showVisitingMessages contains a boolean that if set will print out
+		// ShowVisitingMessages contains a boolean that if set will print out
 		// every website that is being visited. This is handy in debugging
 		// situations and I usually keep it on.
 		ShowVisitingMessages bool
 
-		// verbose provides some nice printing to diagnose issues.
+		// Verbose provides some nice printing to diagnose issues.
 		Verbose bool
 
+		// RateLimit flag, if set it requires you to also set RequestsPerSecond.
 		RateLimit bool
+
 		// RequestsPerSecond defines how many requests we want to send per second.
 		// only works if RateLimit is true, by default it's set to true.
 		RequestsPerSecond int
 
-		// concurrentRequestsChan buffered channel of n where n is ConcurrentRequests
-		// concurrentRequestsChan chan struct{}
-
+		// HttpClient is just a HttpClient with a different name for tests.
+		// You can overwrite this if you like.
 		HttpClient CustomHttpClient
 	}
 )
