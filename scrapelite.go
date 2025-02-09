@@ -237,9 +237,6 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 					}
 					return
 				}
-				if s.Verbose {
-					s.verbosePrint(fmt.Sprintf("We got the %s href selector from the a tag successfully", href))
-				}
 
 				hrefUrl, err := url.Parse(href)
 				if err != nil {
