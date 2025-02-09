@@ -175,6 +175,9 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 	for l := range s.HrefLinks {
 		// Waiting for waitTick time to fulfill RequestsPerSecond.
 		if s.RateLimit {
+			if waitTick == 0 {
+				log.Fatal("why on earth is waittick zero")
+			}
 			<-time.After(time.Duration(waitTick))
 		}
 
