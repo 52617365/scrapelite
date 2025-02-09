@@ -58,7 +58,6 @@ type (
 		Verbose bool
 
 		RateLimit bool
-
 		// RequestsPerSecond defines how many requests we want to send per second.
 		// only works if RateLimit is true, by default it's set to true.
 		RequestsPerSecond int
@@ -169,8 +168,12 @@ func (s *Scraper) ScrapeDocumentsAndHrefLinks(baseUrl *url.URL) {
 		Assert(s.RequestsPerSecond != 0, "RequestsPerSecond was zero, why?")
 	}
 
-	requestsPerSecond := s.RequestsPerSecond / s.Workers
-	waitTick := int(time.Second) / requestsPerSecond
+	var waitTick int
+	var requestsPerSecond int
+	if s.RateLimit {
+		requestsPerSecond = s.RequestsPerSecond / s.Workers
+		waitTick = int(time.Second) / requestsPerSecond
+	}
 
 	for l := range s.HrefLinks {
 		// Waiting for waitTick time to fulfill RequestsPerSecond.
